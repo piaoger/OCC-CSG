@@ -104,6 +104,11 @@
 // shape editing
 #include <BRepFilletAPI_MakeFillet.hxx>
 
+// export obj
+#include <StdPrs_ToolTriangulatedShape.hxx>
+#include <BRepMesh.hxx>
+#include <Poly_Triangulation.hxx>
+#include <Interface_Static.hxx>
 
 // math (OCCT/OCE compliant)
 #include <math.hxx>
@@ -336,6 +341,137 @@ TopoDS_Shape load(std::string const &filename) {
 	return shape;
 }
 
+
+#define UOrigin 0.
+#define VOrigin 0.
+
+#define URepeat 1.
+#define VRepeat 1.
+
+#define ScaleU 1.
+#define ScaleV 1.
+
+static Standard_Boolean TriangleIsValid(const gp_Pnt& P1, const gp_Pnt& P2, const gp_Pnt& P3) {
+	gp_Vec V1(P1,P2);
+	gp_Vec V2(P2,P3);
+	gp_Vec V3(P3,P1);
+
+	if ((V1.SquareMagnitude() > 1.e-10) && (V2.SquareMagnitude() > 1.e-10) && (V3.SquareMagnitude() > 1.e-10)) {
+		V1.Cross(V2);
+		if (V1.SquareMagnitude() > 1.e-10) {
+			return Standard_True;
+		} else{
+			return Standard_False;
+		}
+	} else {
+		return Standard_False;
+	}
+}
+ 
+
+void export_obj(const TopoDS_Shape& theShape, const TCollection_AsciiString& theFileName) {
+
+	std::cout << "Export OBJ into file " << theFileName.ToCString()<<std::endl;
+
+	std::ofstream fout(theFileName.ToCString());
+
+	Standard_Real Umin, Umax, Vmin, Vmax, dUmax, dVmax;
+	TopExp_Explorer ExpFace;
+	StdPrs_ToolTriangulatedShape SST;
+
+	// Triangulate
+	// auto triangulation
+	//   StdSelect_BRepSelectionTool::Load
+	//   StdPrs_HLRPolyShape::Add
+	{
+		const Standard_Real theLinDeflection = 1.0;
+		const Standard_Real theAngDeflection = 0.5;
+		const Standard_Boolean isRelative = false;
+		BRepMesh_IncrementalMesh mesh(theShape, theLinDeflection, isRelative, theAngDeflection);
+	}
+
+	Standard_Integer ShapeId = 1;
+	Standard_Integer baseV = 0;
+	Standard_Integer baseN = 0;
+	Standard_Integer baseT = 0;
+	for(ExpFace.Init(theShape, TopAbs_FACE); ExpFace.More(); ExpFace.Next()) {
+
+	TopoDS_Face myFace = TopoDS::Face(ExpFace.Current());
+	TopLoc_Location aLocation;
+
+	Handle(Poly_Triangulation) polytri = BRep_Tool::Triangulation(myFace, aLocation);
+
+	if (!polytri.IsNull()) {
+
+		//write vertex buffer
+		const TColgp_Array1OfPnt& Nodes = polytri->Nodes();
+		for (int i = Nodes.Lower(); i <= Nodes.Upper();i++) {
+			gp_Pnt p = Nodes(i).Transformed(aLocation.Transformation());
+			fout << "v " << p.X() << " " << p.Y() << " " << p.Z() << std::endl;
+		}
+		fout << std::endl;
+
+		//write normal buffer
+		Poly_Connect polyconn(polytri);
+		TColgp_Array1OfDir myNormal(Nodes.Lower(), Nodes.Upper());
+		SST.Normal(myFace, polyconn, myNormal);
+
+		//myNormal.Length();
+		for (int i = myNormal.Lower(); i <= myNormal.Upper();i++) {
+			gp_Dir d = myNormal(i).Transformed(aLocation.Transformation());
+			fout << "vn " << d.X() << " " << d.Y() << " " << d.Z() << std::endl;
+		}
+		fout << std::endl;
+
+		//write uvcoord buffer
+		BRepTools::UVBounds(myFace,Umin, Umax, Vmin, Vmax);
+		dUmax = (Umax - Umin);
+		dVmax = (Vmax - Vmin);
+		const TColgp_Array1OfPnt2d& UVNodes = polytri->UVNodes();
+		for (int i = UVNodes.Lower(); i <= UVNodes.Upper();i++) {
+			gp_Pnt2d d = UVNodes(i);
+
+			Standard_Real u = (-UOrigin+(URepeat*(d.X()-Umin))/dUmax)/ScaleU;
+			Standard_Real v = (-VOrigin+(VRepeat*(d.Y()-Vmin))/dVmax)/ScaleV;
+
+			fout << "vt " << u << " " << v << " 0" << std::endl;
+		}
+		fout << std::endl;
+
+		//write triangle buffer
+		if (Interface_Static::IVal("write.obj.groups")) {
+			fout << "g face_" << ShapeId++ << std::endl;
+		}
+
+		Standard_Integer n1 , n2 , n3;
+		const Poly_Array1OfTriangle& triangles = polytri->Triangles();
+
+		for (int nt = 1; nt <= polytri->NbTriangles(); nt++) {
+			if (myFace.Orientation() == TopAbs_REVERSED) {
+				triangles(nt).Get(n1,n3,n2);
+			} else {
+				triangles(nt).Get(n1,n2,n3);
+			}
+
+			if (TriangleIsValid (Nodes(n1),Nodes(n2),Nodes(n3)) ) {
+				fout << "f " <<n1 + baseV<<"/"<<n1 + baseT<<"/"<<n1 + baseN<<" "
+						 <<n2 + baseV<<"/"<<n2 + baseT<<"/"<<n2 + baseN<<" "
+						 <<n3 + baseV<<"/"<<n3 + baseT<<"/"<<n3 + baseN<<" "
+						 <<std::endl;
+			}
+		}
+		fout << std::endl;
+
+		baseV += Nodes.Length();
+		baseN += myNormal.Length();
+		baseT += UVNodes.Length();
+	  }
+	}
+
+	fout << std::flush;
+	fout.close(); 
+}
+
 bool save(std::string const &filename, TopoDS_Shape shape, double stlTOL) {
 	std::cout << "> saving geometry" << std::endl;
 	std::cout << " -> writing file '" << filename << "'" << std::endl;
@@ -353,11 +489,17 @@ bool save(std::string const &filename, TopoDS_Shape shape, double stlTOL) {
 		writer.Write(filename.c_str());
 	} else if(endsWith(toLower(filename), ".igs")) {
 		std::cout << " -> ignoring STL TOL (using resolution independent format): " << stlTOL << std::endl;
-		int aBrepMode = 0;
 		IGESControl_Writer writer;
 		writer.AddShape(shape);
 		writer.ComputeModel();
 		writer.Write(filename.c_str());
+
+	} else if(endsWith(toLower(filename), ".obj")) {
+		std::cout << " -> ignoring STL TOL (using resolution independent format): " << stlTOL << std::endl;
+
+		TCollection_AsciiString objName( (Standard_CString)filename.data() );
+		export_obj(shape, objName);
+
 	}  else if(endsWith(toLower(filename), ".brep")){
 		std::cout << " -> ignoring STL TOL (using resolution independent format): " << stlTOL << std::endl;
 		BRepTools::Write(shape, filename.c_str());

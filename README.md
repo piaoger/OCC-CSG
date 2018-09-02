@@ -132,3 +132,9 @@ For using `occ-csg` as independent command-line tool it is recommended to compil
 For building large projects on Windows it might be preferable to use the x64 host compiler instead of the x86 compiler. Note that both compilers are able to produce x64 binaries. But the x64 compiler can use more memory during compilation. To really prevent that CMake picks the 64bit x86 host compiler just force cmake to use the x64 host compiler via
 
     -DCMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE=X64 -G "Visual Studio 15 2017 Win64"
+
+
+#### references
+
+mayo: 3D viewer based on OpenCascade 
+https://github.com/fougue/mayo
