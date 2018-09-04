@@ -113,6 +113,12 @@
 // math (OCCT/OCE compliant)
 #include <math.hxx>
 
+
+// -----------------------------
+// shape fix
+#include "opencascade/ops.h"
+
+
 #define MAX2(X, Y)	(  Abs(X) > Abs(Y)? Abs(X) : Abs(Y) )
 #define MAX3(X, Y, Z)	( MAX2 ( MAX2(X,Y) , Z) )
 
@@ -489,6 +495,7 @@ bool save(std::string const &filename, TopoDS_Shape shape, double stlTOL) {
 		writer.Write(filename.c_str());
 	} else if(endsWith(toLower(filename), ".igs")) {
 		std::cout << " -> ignoring STL TOL (using resolution independent format): " << stlTOL << std::endl;
+		open_cascade::ops::brep::sew_shape(shape);
 		IGESControl_Writer writer;
 		writer.AddShape(shape);
 		writer.ComputeModel();

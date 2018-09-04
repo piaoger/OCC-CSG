@@ -1,9 +1,9 @@
 IF(UNIX)
   set(OS_SPECIFIC "pthread")
 ENDIF(UNIX)  
-
+ 
 CreateExecutable(occ-csg.cpp
-
+ 
 #${OpenCASCADE_LIBRARIES}
 
 TKSTL       # stl file support
