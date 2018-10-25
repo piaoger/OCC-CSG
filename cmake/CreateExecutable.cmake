@@ -8,6 +8,8 @@ function(CreateExecutable EXECUTABLESOURCE)
 
 	    ./opencascade/brep.cpp
 	    ./opencascade/csg.cpp
+	    ./opencascade/convert.cpp
+	    ./opencascade/query.cpp
 	)
 
 	add_executable(${EXECUTABLEBINARY} ${EXECUTABLESOURCE} ${libslvs_SOURCES})

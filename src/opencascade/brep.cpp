@@ -194,7 +194,7 @@ TopoDS_Shape create_polygon2d(std::vector<double> const &coords) {
 		exit(1);
 	}
 
-    size_t numVerts = coords.size()/2;
+	size_t numVerts = coords.size()/2;
 	std::vector<TopoDS_Vertex> vertices;
 
 	for(size_t i = 0; i < coords.size(); i+=2) {
@@ -282,8 +282,8 @@ TopoDS_Shape fix_shape(const TopoDS_Shape& shape) {
 	// perform healing in case the boolean operations
 	// cause problems
 	ShapeFix_Shape fixer(shape);
-    fixer.Perform();
-    return fixer.Shape();
+	fixer.Perform();
+	return fixer.Shape();
 }
 
 

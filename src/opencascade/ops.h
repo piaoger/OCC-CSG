@@ -40,6 +40,18 @@ namespace open_cascade { namespace ops {
 		TopoDS_Shape intesect(const TopoDS_Shape& s1, const TopoDS_Shape& s2);
 	}
 
+	namespace convert {
 
+		TopoDS_Shape from_stl(const TopoDS_Shape& shape);
+		TopoDS_Shape from_obj(const TopoDS_Shape& shape);
+		TopoDS_Shape from_iges(const TopoDS_Shape& shape);
+		TopoDS_Shape from_step(const TopoDS_Shape& shape);
+
+		TopoDS_Shape to_stl(const TopoDS_Shape& shape);
+		TopoDS_Shape to_obj(const TopoDS_Shape& shape);
+		TopoDS_Shape to_iges(const TopoDS_Shape& shape);
+		TopoDS_Shape to_step(const TopoDS_Shape& shape);
+
+	}
  
 }}

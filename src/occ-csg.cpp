@@ -1,8 +1,8 @@
 /*
  * Copyright 2018 Michael Hoffer <info@michaelhoffer.de>. All rights reserved.
- * 
+ *
  * This file is part of OCC-CSG.
- * 
+ *
  * OCC-CSG is free software: you can redistribute it and/or modify it under the
  * terms of the GNU Lesser General Public License version 3 as published by the
  * Free Software Foundation.
@@ -45,6 +45,9 @@
 #include <TopoDS_Shell.hxx>
 #include <TopExp.hxx>
 #include <TopoDS.hxx>
+
+// shape healing/repair
+#include <ShapeFix_Shape.hxx>
 
 // STEP import and export
 #include <BRepGProp.hxx>
@@ -121,8 +124,6 @@
 
 #define MAX2(X, Y)	(  Abs(X) > Abs(Y)? Abs(X) : Abs(Y) )
 #define MAX3(X, Y, Z)	( MAX2 ( MAX2(X,Y) , Z) )
-
-
 
 // version
 #define VERSION "0.9.2"
@@ -203,9 +204,9 @@ int parseInt(std::string const &str, std::string const & varName);
 // the CLI appliction
 int main(int argc, char *argv[])
 {
-	
+
 	if(argc > 1 && strcmp(argv[1], "--version")==0) { version(); exit(0); }
-	
+
 	std::cout << "------------------------------------------------------------" << std::endl;
     std::cout << "------      CSG Tool based on the OCE CAD Kernel      ------" << std::endl;
 	std::cout << "------                 Version " << VERSION << "                  ------" << std::endl;
@@ -289,7 +290,7 @@ TopoDS_Shape importSTL( std::string const &file )
 	shape = shapeSewer.SewedShape();
 
 	std::cout << " -> extracting shells" << std::endl;
-    
+
 	BRepBuilderAPI_MakeSolid solidmaker;
 	TopTools_IndexedMapOfShape shellMap;
 	TopExp::MapShapes(shape, TopAbs_SHELL, shellMap);
@@ -304,7 +305,7 @@ TopoDS_Shape importSTL( std::string const &file )
 	std::cout << "   -> shells found: " << counter << std::endl;
 
 	std::cout << " -> converting to solid" << std::endl;
-	
+
 	TopoDS_Shape solid = solidmaker.Solid();
 
 	std::cout << " -> done." << std::endl;
@@ -373,7 +374,7 @@ static Standard_Boolean TriangleIsValid(const gp_Pnt& P1, const gp_Pnt& P2, cons
 		return Standard_False;
 	}
 }
- 
+
 
 void export_obj(const TopoDS_Shape& theShape, const TCollection_AsciiString& theFileName) {
 
@@ -475,7 +476,7 @@ void export_obj(const TopoDS_Shape& theShape, const TCollection_AsciiString& the
 	}
 
 	fout << std::flush;
-	fout.close(); 
+	fout.close();
 }
 
 bool save(std::string const &filename, TopoDS_Shape shape, double stlTOL) {
@@ -513,7 +514,7 @@ bool save(std::string const &filename, TopoDS_Shape shape, double stlTOL) {
 	} else {
 		unsupportedFormat(filename);
 	}
-	
+
 	std::cout << " -> done." << std::endl;
 
 	return true;
@@ -693,7 +694,7 @@ void create(int argc, char *argv[]) {
 		}
 
 		std::vector<std::string> values = split(argv[3], ',');
-		
+
 		if(values.size()!=3) {
             error("wrong number of values!");
 		}
@@ -918,7 +919,7 @@ void convert(int argc, char *argv[]) {
 }
 
 void csg(int argc, char *argv[]) {
-	if(argc != 6 && argc != 7) {
+	if(argc < 6 || argc > 8) {
         error("wrong number of arguments!");
 	}
 
@@ -929,24 +930,51 @@ void csg(int argc, char *argv[]) {
 
 	std::cout << "> applying csg operation" << std::endl;
 
+	// see the following links for new boolean features used below:
+	// https://www.opencascade.com/sites/default/files/documents/release_notes_7.3.0.pdf
+	// https://dev.opencascade.org/index.php?q=node/1056
+	double fuzzyValue = 0.0;
+
+    if(argc >= 8) {
+        fuzzyValue = parseDouble(argv[7], "fuzzyValue");
+
+		std::cout << "> WARNING: fuzzy value currently not supported" << std::endl;
+    }
+
 	if(strcmp(argv[2],"union")==0) {
 		BRepAlgoAPI_Fuse csg(s1, s2);
+		// csg.SetUseOBB(true);
+		// csg.SetRunParallel(true);
+		// csg.SetFuzzyValue(fuzzyValue);
 		res = csg.Shape();
 	} else if(strcmp(argv[2],"difference")==0) {
 		BRepAlgoAPI_Cut csg(s1, s2);
+        // csg.SetUseOBB(true);
+        // csg.SetRunParallel(true);
+        // csg.SetFuzzyValue(fuzzyValue);
 		res = csg.Shape();
 	} else if(strcmp(argv[2],"intersection")==0) {
 		BRepAlgoAPI_Common csg(s1, s2);
+        // csg.SetUseOBB(true);
+        // csg.SetRunParallel(true);
+        // csg.SetFuzzyValue(fuzzyValue);
 		res = csg.Shape();
 	} else {
         error("unknown command '" + std::string(argv[2]) + "'!");
 	}
 
+	// perform healing in case the boolean operations
+	// cause problems
+	ShapeFix_Shape FixShape;
+	FixShape.Init(res);
+	FixShape.Perform();
+	res = FixShape.Shape();
+
 	std::cout << " -> done." << std::endl;
 
 	double stlTOL;
 
-	if(argc == 7) {
+	if(argc >= 7) {
 		stlTOL = parseDouble(argv[6], "stlTOL");
 	} else {
 		stlTOL = 0.5;
@@ -1177,8 +1205,8 @@ void splitShape(int argc, char *argv[]) {
 	}
 
 	// remove file ending
-	size_t lastindex = fileName.find_last_of("."); 
-	std::string fNameWithoutEnding = fileName.substr(0, lastindex); 
+	size_t lastindex = fileName.find_last_of(".");
+	std::string fNameWithoutEnding = fileName.substr(0, lastindex);
 
 	std::vector<TopoDS_Shape> faces = splitShape(shape);
 
@@ -1292,7 +1320,7 @@ TopoDS_Shape createPolygons(std::vector<double> const &points, std::vector<std::
     size_t numVerts = points.size()/3;
 	std::vector<TopoDS_Vertex> vertices(numVerts);
 
-	// converting number list to vertices 
+	// converting number list to vertices
 	for(size_t i = 0; i < points.size(); i+=3) {
 		gp_XYZ p;
 		p.SetCoord(points[i+0], points[i+1], points[i+2]);
@@ -1329,7 +1357,7 @@ TopoDS_Shape createPolygons(std::vector<double> const &points, std::vector<std::
 		TopoDS_Face face = BRepBuilderAPI_MakeFace( wire );
 
 		faces.push_back(face);
-		
+
 	} // end for each face
 
 	// sewing faces
@@ -1345,7 +1373,7 @@ TopoDS_Shape createPolygons(std::vector<double> const &points, std::vector<std::
 	TopoDS_Shape shape = shapeSewer.SewedShape();
 
 	std::cout << " -> extracting shells" << std::endl;
-    
+
 	BRepBuilderAPI_MakeSolid solidmaker;
 	TopTools_IndexedMapOfShape shellMap;
 	TopExp::MapShapes(shape, TopAbs_SHELL, shellMap);
@@ -1360,7 +1388,7 @@ TopoDS_Shape createPolygons(std::vector<double> const &points, std::vector<std::
 	std::cout << "   -> shells found: " << counter << std::endl;
 
 	std::cout << " -> converting to solid" << std::endl;
-	
+
 	TopoDS_Shape solid = solidmaker.Solid();
 
 	std::cout << " -> done." << std::endl;
@@ -1530,7 +1558,7 @@ TopoDS_Shape createText2d(std::string const &font, double fSize, double x, doubl
     Font_BRepTextBuilder textBuilder;
     Font_BRepFont fontObj(font.c_str(), fSize);
     TopoDS_Shape textShape = textBuilder.Perform(fontObj, NCollection_String(text.c_str()));
-	
+
     return textShape;
 }
 
@@ -1629,11 +1657,11 @@ double parseDouble(std::string const &str, std::function< void(NUMBER_CONVERSION
 double parseDouble(std::string const &str, NUMBER_CONVERSION_ERROR *ERROR) {
 	const char* buff = str.c_str();
 	char *end;
-   
+
    	errno = 0;
-   
+
     const double number = strtod(buff, &end);
-   
+
     if(ERROR != NULL) {
         if (end == buff) {
           *ERROR = ERR_CANNOT_PARSE_NUMBER;
@@ -1641,7 +1669,7 @@ double parseDouble(std::string const &str, NUMBER_CONVERSION_ERROR *ERROR) {
         } else if ('\0' != *end) {
 			*ERROR = ERR_EXTRA_CHARS_AT_THE_END;
           	return -1;
-        } else if ((std::numeric_limits<double>::min() == number 
+        } else if ((std::numeric_limits<double>::min() == number
 		    || std::numeric_limits<double>::max() == number) && ERANGE == errno) {
             *ERROR = ERR_OUT_OF_RANGE;
 			return -1;
@@ -1682,11 +1710,11 @@ int parseInt(std::string const &str, NUMBER_CONVERSION_ERROR *ERROR) {
 
 	const char* buff = str.c_str();
 	char *end;
-   
+
    	errno = 0;
-   
+
     const int number = strtol(buff, &end, 10);
-   
+
     if(ERROR != NULL) {
         if (end == buff) {
           *ERROR = ERR_CANNOT_PARSE_NUMBER;
@@ -1694,7 +1722,7 @@ int parseInt(std::string const &str, NUMBER_CONVERSION_ERROR *ERROR) {
         } else if ('\0' != *end) {
 			*ERROR = ERR_EXTRA_CHARS_AT_THE_END;
           	return -1;
-        } else if ((std::numeric_limits<int>::min() == number 
+        } else if ((std::numeric_limits<int>::min() == number
 		    || std::numeric_limits<int>::max() == number) && ERANGE == errno) {
             *ERROR = ERR_OUT_OF_RANGE;
 			return -1;
@@ -1704,7 +1732,7 @@ int parseInt(std::string const &str, NUMBER_CONVERSION_ERROR *ERROR) {
 	}
 
 	return number;
-}  
+}
 
 void notImplemented() {
 	std::cerr << "> ERROR: requested functionality not implemented" << std::endl;
@@ -1739,7 +1767,7 @@ void usage() {
 	std::cerr << " occ-csg --create 2d:circle x,y,r                                  2dcircle.stp" << std::endl;
 	std::cerr << " occ-csg --create 2d:polygon x1,y1,x2,y2,...                       2dpolygon.stp" << std::endl;
 	std::cerr << " occ-csg --create 2d:rect x1,y1,x2,y2                              2drectangle.stp" << std::endl;
-	//std::cerr << " occ-csg --create 2d:text font.ttf 12.0 x,y \"text to render\"       2dtext.stp" << std::endl;
+	std::cerr << " occ-csg --create 2d:text font.ttf 12.0 x,y \"text to render\"       2dtext.stp" << std::endl;
 	std::cerr << " occ-csg --create extrusion:polygon ex,ey,ez,x1,y1,z1,x2,y2,z2,... extrude.stp" << std::endl;
 	std::cerr << " occ-csg --create extrusion:file ex,ey,ez                          2dpath.stp extrude.stp" << std::endl;
 	std::cerr << "" << std::endl;
